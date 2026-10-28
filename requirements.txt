@@ -1,0 +1,8 @@
+moderngl
+moderngl-window
+imgui-bundle
+glfw
+numpy
+opencv-python-headless
+pyvirtualcam
+pillow

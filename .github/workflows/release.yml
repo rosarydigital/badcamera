@@ -1,0 +1,49 @@
+name: Build release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            archive: BadCamera-windows-x64.zip
+          - os: ubuntu-22.04  # older glibc, so the build runs on most distros
+            archive: BadCamera-linux-x64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: python tools/make_assets.py
+      - run: pyinstaller --noconfirm badcamera.spec
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path dist/BadCamera -DestinationPath ${{ matrix.archive }}
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp packaging/linux/install-desktop-entry.sh dist/BadCamera/
+          chmod +x dist/BadCamera/BadCamera dist/BadCamera/install-desktop-entry.sh
+          tar -czf ${{ matrix.archive }} -C dist BadCamera
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ github.event.release.tag_name }} ${{ matrix.archive }} --clobber
