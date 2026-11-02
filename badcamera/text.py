@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from . import osd
 from .gpu import ROOT
 
 SYSTEM_FONTS = {
@@ -25,8 +26,9 @@ SYSTEM_FONTS = {
 def fonts():
     """Installed system fonts plus any .ttf/.otf dropped into assets/fonts/."""
     out = {k: v for k, v in SYSTEM_FONTS.items() if Path(v).exists()}
-    for p in sorted((ROOT / "assets" / "fonts").glob("*.[ot]tf")):
-        out[p.stem] = str(p)
+    for folder in (ROOT / "assets" / "fonts", ROOT / "badcamera" / "fonts"):
+        for p in sorted(folder.glob("*.[ot]tf")):
+            out[p.stem] = str(p)
     return out
 
 
@@ -159,6 +161,17 @@ def seven_segment(text, h, tracking=0.0):
     return np.asarray(img, np.float32) / 255
 
 
+OSD_STYLES = {"vcr_osd": "vcr", "camcorder_osd": "camcorder", "cctv_osd": "cctv"}
+OSD_DOTS = 25  # chip dots from the top to the bottom of a capital
+
+
+def chip_osd(text, h, variant, tracking=0.0):
+    """Character-generator lettering at this size. Nearest-neighbour keeps the chip's hard dots at any output resolution."""
+    dots = osd.text(text, variant, tracking)
+    k = h / OSD_DOTS
+    return cv2.resize(dots, (max(1, int(dots.shape[1] * k)), max(1, int(dots.shape[0] * k))), interpolation=cv2.INTER_NEAREST).astype(np.float32)
+
+
 def truetype(text, h, font_name, tracking=0.0):
     """Anti-aliased TrueType, drawn glyph by glyph so letter spacing can be adjusted."""
     font = load_font(font_name, h * 1.35)  # ~cap height h
@@ -179,9 +192,11 @@ def truetype(text, h, font_name, tracking=0.0):
 def block(lines, style, h, font_name, slant, tracking, align):
     """Stack rendered lines with the given alignment and shear for italic."""
     render_line = {"digicam": lambda s: seven_segment(s, h, tracking), "vcr": lambda s: dot_matrix(s, h, False, tracking),
-                   "dotmatrix": lambda s: dot_matrix(s, h, True, tracking)}.get(style, lambda s: truetype(s, h, font_name, tracking))
+                   "dotmatrix": lambda s: dot_matrix(s, h, True, tracking),
+                   "film_led": lambda s: truetype(s, h, "DSEG7Classic-BoldItalic", tracking),
+                   **{k: (lambda s, v=v: chip_osd(s, h, v, tracking)) for k, v in OSD_STYLES.items()}}.get(style, lambda s: truetype(s, h, font_name, tracking))
     masks = [render_line(s) for s in lines]
-    gap = int(h * (0.6 if style in ("vcr", "dotmatrix") else 0.45))
+    gap = int(h * (0.6 if style in ("vcr", "dotmatrix", *OSD_STYLES) else 0.45))
     rows = sum(m.shape[0] for m in masks) + gap * (len(masks) - 1)
     inner = max(m.shape[1] for m in masks)
     W = inner + int(abs(slant) * rows) + 2  # room for the shear
@@ -204,14 +219,18 @@ def compose(mask, color, glow, hot_core, shadow, style, h):
     color = np.array(color, np.float32)
     layers = []
     if shadow > 0:
-        if style in ("vcr", "dotmatrix"):  # hard black outline + drop shadow, like a character-generator OSD
+        if style in OSD_STYLES:  # keyed black edge one chip dot wide, all the way around each stroke
+            k = max(1, round(1.6 * h / OSD_DOTS))
+            layers.append((np.zeros(3, np.float32), np.clip(cv2.dilate(m, np.ones((2 * k + 1, 2 * k + 1), np.uint8)) * shadow, 0, 1)))
+        elif style in ("vcr", "dotmatrix"):  # hard black outline + drop shadow, like a character-generator OSD
             k = max(1, round(h / 7))
             sh = cv2.dilate(m, np.ones((2 * k + 1, 2 * k + 1), np.uint8))
             sh = np.maximum(sh, np.roll(sh, (k, k), (0, 1)))
+            layers.append((np.zeros(3, np.float32), np.clip(sh * shadow, 0, 1)))
         else:
             off = max(1, int(h * 0.07))
             sh = cv2.GaussianBlur(np.roll(cv2.dilate(m, None), (off, off), (0, 1)), (0, 0), max(1.0, h * 0.06))
-        layers.append((np.zeros(3, np.float32), np.clip(sh * shadow, 0, 1)))
+            layers.append((np.zeros(3, np.float32), np.clip(sh * shadow, 0, 1)))
     if glow > 0:
         wide = cv2.GaussianBlur(m, (0, 0), max(2.0, h * 0.35))
         tight = cv2.GaussianBlur(m, (0, 0), max(1.0, h * 0.08))

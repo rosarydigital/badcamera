@@ -7,7 +7,7 @@ cat > ~/.local/share/applications/badcamera.desktop <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=BadCamera
-Comment=Live digicam / VHS / CCD camera effects
+Comment=Live camera effects and a small video editor
 Exec="$here/BadCamera"
 Icon=$here/_internal/assets/icon.png
 Categories=AudioVideo;Video;

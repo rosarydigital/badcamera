@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -5,7 +6,19 @@ import moderngl
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT  # writable: next to the .exe in builds
+
+
+def data_dir():
+    """Where presets and captures live: beside the program, or a user folder when the app was installed read-only."""
+    if not getattr(sys, "frozen", False):
+        return ROOT
+    if os.environ.get("APPIMAGE") or (ROOT / "installed.flag").exists():  # AppImage, or the Windows installer
+        base = os.environ.get("APPDATA") if os.name == "nt" else os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
+        return Path(base) / "BadCamera"
+    return Path(sys.executable).parent
+
+
+DATA = data_dir()
 SHADERS = Path(__file__).parent / "shaders"
 
 VERT = """#version 330
@@ -36,7 +49,7 @@ class GPU:
         self.pool, self.used = {}, {}
         self.fbos = {}
         self.assets = {}
-        self.time, self.frame = 0.0, 0
+        self.time, self.frame, self.wall = 0.0, 0, None  # wall: fixed clock for on-screen dates during export
         self.pbos, self.pbo_i = None, 0
 
     def begin_frame(self, time):
@@ -48,6 +61,8 @@ class GPU:
     def texture(self, w, h):
         t = self.ctx.texture((w, h), 4, dtype="f2")
         t.repeat_x = t.repeat_y = False
+        self.fbo(t).clear()  # new GPU memory holds junk, and temporal effects read it on their first frame
+        self.ctx.finish()  # on AMD a new texture can be sampled before its clear lands, which leaves tile-shaped garbage for one frame
         return t
 
     def tmp(self, w, h):

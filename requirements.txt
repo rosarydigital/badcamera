@@ -6,3 +6,5 @@ numpy
 opencv-python-headless
 pyvirtualcam
 pillow
+sounddevice
+imageio-ffmpeg

@@ -1,0 +1,13 @@
+# Builds BadCamera Hardware.vst3. cmake -S . -B build -Dvst3sdk_SOURCE_DIR=/path/to/vst3sdk
+cmake_minimum_required(VERSION 3.25)
+project(badcamera_vst3 VERSION 1.0.0)
+set(CMAKE_CXX_STANDARD 17)
+set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "")
+set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "")
+set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "")
+set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "")
+set(SMTG_RUN_VST_VALIDATOR ON CACHE BOOL "")
+add_subdirectory(${vst3sdk_SOURCE_DIR} ${PROJECT_BINARY_DIR}/vst3sdk)
+smtg_enable_vst3_sdk()
+smtg_add_vst3plugin(BadCameraHardware badcamera_vst3.cpp badcamera_dsp.h)
+target_link_libraries(BadCameraHardware PRIVATE sdk)

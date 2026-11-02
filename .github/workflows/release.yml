@@ -16,34 +16,58 @@ jobs:
         include:
           - os: windows-latest
             archive: BadCamera-windows-x64.zip
+            installer: BadCamera-windows-x64-setup.exe
           - os: ubuntu-22.04  # older glibc, so the build runs on most distros
             archive: BadCamera-linux-x64.tar.gz
+            installer: BadCamera-linux-x64.AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'  # before pyinstaller, so PortAudio is bundled
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 libportaudio2
       - run: pip install -r requirements.txt pyinstaller
       - run: python tools/make_assets.py
       - run: pyinstaller --noconfirm badcamera.spec
 
+      - name: Build Resolve plugin
+        shell: bash
+        run: |
+          python tools/gen_plugin_tables.py
+          git clone --depth 1 https://github.com/AcademySoftwareFoundation/openfx ofx
+          cmake -S plugins/resolve -B ofxbuild -DOFX_INCLUDE="$PWD/ofx/include" -DCMAKE_BUILD_TYPE=Release
+          cmake --build ofxbuild --config Release
+          find ofxbuild -name 'BadCamera.ofx' -exec cp {} dist/BadCamera/ \;
+          cp packaging/resolve/install-resolve-plugin.sh dist/BadCamera/ || true
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path dist/BadCamera -DestinationPath ${{ matrix.archive }}
+        run: |
+          Compress-Archive -Path dist/BadCamera -DestinationPath ${{ matrix.archive }}
+          New-Item dist/BadCamera/_internal/installed.flag -ItemType File
+          choco install innosetup --no-progress
+          iscc packaging/windows/badcamera.iss
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: |
           cp packaging/linux/install-desktop-entry.sh dist/BadCamera/
-          chmod +x dist/BadCamera/BadCamera dist/BadCamera/install-desktop-entry.sh
+          chmod +x dist/BadCamera/BadCamera dist/BadCamera/install-desktop-entry.sh dist/BadCamera/install-resolve-plugin.sh
           tar -czf ${{ matrix.archive }} -C dist BadCamera
+          curl -sL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          APPIMAGETOOL=./appimagetool bash packaging/linux/build-appimage.sh
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive }}
-          path: ${{ matrix.archive }}
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.installer }}
       - name: Attach to release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} ${{ matrix.archive }} --clobber
+        run: gh release upload ${{ github.event.release.tag_name }} ${{ matrix.archive }} ${{ matrix.installer }} --clobber

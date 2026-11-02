@@ -13,9 +13,8 @@ class Camera(threading.Thread):
         self.is_file = not (source.startswith("/dev/") or source.isdigit())
         backend = cv2.CAP_ANY if self.is_file else cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_V4L2
         self.cap = cv2.VideoCapture(int(source) if source.isdigit() else source, backend)
-        if not self.cap.isOpened():
-            raise SystemExit(f"Can't open video source {source}")
-        if not self.is_file:
+        self.ok = self.cap.isOpened()  # no camera is fine: the Editor tab still works
+        if self.ok and not self.is_file:
             self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
@@ -25,7 +24,7 @@ class Camera(threading.Thread):
 
     def run(self):
         last = time.perf_counter()
-        while self.running:
+        while self.running and self.ok:
             ok, f = self.cap.read()
             if not ok:
                 if self.is_file:  # loop test videos
@@ -42,5 +41,6 @@ class Camera(threading.Thread):
 
     def stop(self):
         self.running = False
-        self.join(timeout=1)
+        if self.is_alive():
+            self.join(timeout=1)
         self.cap.release()

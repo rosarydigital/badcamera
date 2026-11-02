@@ -1,0 +1,11 @@
+# Builds BadCamera.ofx. Needs the OpenFX headers: cmake -S . -B build -DOFX_INCLUDE=/path/to/openfx/include
+cmake_minimum_required(VERSION 3.16)
+project(badcamera_ofx CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_BUILD_TYPE Release CACHE STRING "")
+add_library(BadCamera MODULE badcamera_ofx.cpp)
+target_include_directories(BadCamera PRIVATE ${OFX_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(BadCamera PROPERTIES PREFIX "" SUFFIX ".ofx" CXX_VISIBILITY_PRESET hidden)
+if(WIN32)
+  target_link_libraries(BadCamera PRIVATE ws2_32)
+endif()

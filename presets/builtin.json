@@ -65,7 +65,9 @@
    {
     "type": "text_stamp",
     "enabled": true,
-    "params": {}
+    "params": {
+     "style": "film_led"
+    }
    },
    {
     "type": "sensor_noise",
@@ -478,6 +480,7 @@
  },
  {
   "name": "VHS",
+  "audio": "VHS linear SP",
   "steps": [
    {
     "type": "camera_life",
@@ -490,22 +493,15 @@
     }
    },
    {
-    "type": "gaussian_blur",
-    "enabled": true,
-    "params": {
-     "sigma": 1.0
-    }
-   },
-   {
     "type": "text_stamp",
     "enabled": true,
     "params": {
      "text": "%b %d %Y|%I:%M:%S %p",
      "align": "right",
-     "x": 0.93,
-     "y": 0.86,
+     "x": 0.92,
+     "y": 0.84,
      "size": 1.3,
-     "style": "vcr",
+     "style": "vcr_osd",
      "glow": 0.0,
      "hot_core": 0.0,
      "shadow": 0.9,
@@ -518,23 +514,9 @@
     }
    },
    {
-    "type": "interlace",
+    "type": "tape",
     "enabled": true,
     "params": {}
-   },
-   {
-    "type": "vhs",
-    "enabled": true,
-    "params": {}
-   },
-   {
-    "type": "noise",
-    "enabled": true,
-    "params": {
-     "amount": 0.05,
-     "blend": "add",
-     "monochrome": true
-    }
    },
    {
     "type": "text_stamp",
@@ -545,7 +527,7 @@
      "x": 0.07,
      "y": 0.1,
      "size": 1.6,
-     "style": "vcr",
+     "style": "vcr_osd",
      "glow": 0.0,
      "hot_core": 0.0,
      "shadow": 0.9,
@@ -566,7 +548,7 @@
      "x": 0.93,
      "y": 0.1,
      "size": 1.6,
-     "style": "vcr",
+     "style": "vcr_osd",
      "glow": 0.0,
      "hot_core": 0.0,
      "shadow": 0.9,
@@ -576,6 +558,473 @@
       1,
       1
      ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "VHS Worn EP",
+  "audio": "VHS linear EP",
+  "steps": [
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "format": "VHS EP",
+     "noise": 1.2,
+     "dropouts": 0.7,
+     "tracking": 0.3
+    }
+   }
+  ]
+ },
+ {
+  "name": "VHS 3rd Generation",
+  "audio": "VHS linear SP",
+  "steps": [
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "generation": 3,
+     "dropouts": 0.4
+    }
+   }
+  ]
+ },
+ {
+  "name": "VHS on a TV",
+  "audio": "VHS linear SP",
+  "steps": [
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "overscan": true
+    }
+   },
+   {
+    "type": "crt",
+    "enabled": true,
+    "params": {}
+   }
+  ]
+ },
+ {
+  "name": "VHS PAL",
+  "audio": "VHS linear SP",
+  "steps": [
+   {
+    "type": "frame_rate",
+    "enabled": true,
+    "params": {
+     "fps": 25.0
+    }
+   },
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "standard": "PAL"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Camcorder VHS-C",
+  "audio": "Camcorder mic",
+  "steps": [
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "camcorder_sensor",
+    "enabled": true,
+    "params": {
+     "softness": 4.0
+    }
+   },
+   {
+    "type": "ccd_smear",
+    "enabled": true,
+    "params": {
+     "strength": 0.4
+    }
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "%b %d %Y",
+     "align": "right",
+     "x": 0.92,
+     "y": 0.84,
+     "size": 1.3,
+     "style": "camcorder_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "input": "Direct (camcorder)"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Camcorder Video8",
+  "audio": "Camcorder mic",
+  "steps": [
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "camcorder_sensor",
+    "enabled": true,
+    "params": {
+     "false_color": 1.3,
+     "softness": 3.0
+    }
+   },
+   {
+    "type": "ccd_smear",
+    "enabled": true,
+    "params": {
+     "strength": 0.4
+    }
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "%b %d %Y",
+     "align": "right",
+     "x": 0.92,
+     "y": 0.84,
+     "size": 1.3,
+     "style": "camcorder_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "● REC",
+     "align": "left",
+     "x": 0.07,
+     "y": 0.1,
+     "size": 1.5,
+     "blink": 1.0,
+     "style": "camcorder_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      0.2,
+      0.15
+     ]
+    }
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "{tc}",
+     "align": "right",
+     "x": 0.92,
+     "y": 0.1,
+     "size": 1.4,
+     "style": "camcorder_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "format": "Video8",
+     "input": "Direct (camcorder)"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Camcorder Hi8",
+  "audio": "Camcorder mic",
+  "steps": [
+   {
+    "type": "camera_life",
+    "enabled": true,
+    "params": {
+     "auto_exposure": 0.9,
+     "white_balance": 0.5,
+     "speed": 0.4,
+     "hunting": 0.15
+    }
+   },
+   {
+    "type": "camcorder_sensor",
+    "enabled": true,
+    "params": {
+     "sensor_noise": 0.7,
+     "false_color": 0.6,
+     "softness": 1.8
+    }
+   },
+   {
+    "type": "ccd_smear",
+    "enabled": true,
+    "params": {
+     "strength": 0.3
+    }
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "%b %d %Y",
+     "align": "right",
+     "x": 0.92,
+     "y": 0.84,
+     "size": 1.3,
+     "style": "camcorder_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "format": "Hi8",
+     "input": "Direct (camcorder)"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Night Vision Security",
+  "audio": "CCTV mic",
+  "steps": [
+   {
+    "type": "night_vision",
+    "enabled": true,
+    "params": {}
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "CAM 03    %m-%d-%Y|REC  {tcf}",
+     "align": "left",
+     "x": 0.07,
+     "y": 0.09,
+     "size": 1.4,
+     "style": "cctv_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "format": "VHS EP",
+     "input": "Direct (camcorder)",
+     "saturation": 1.0,
+     "noise": 0.6,
+     "dropouts": 0.1
+    }
+   }
+  ]
+ },
+ {
+  "name": "Security Cam B&W",
+  "audio": "CCTV mic",
+  "steps": [
+   {
+    "type": "frame_rate",
+    "enabled": true,
+    "params": {
+     "fps": 12.0
+    }
+   },
+   {
+    "type": "night_vision",
+    "enabled": true,
+    "params": {
+     "tint": "Mono",
+     "ghosting": 0.25,
+     "hum_bars": 0.45,
+     "noise": 0.07,
+     "ambient": 0.4
+    }
+   },
+   {
+    "type": "text_stamp",
+    "enabled": true,
+    "params": {
+     "text": "CAM 03  %m-%d-%Y  %H:%M:%S",
+     "align": "left",
+     "x": 0.05,
+     "y": 0.92,
+     "size": 1.4,
+     "style": "cctv_osd",
+     "glow": 0.0,
+     "hot_core": 0.0,
+     "shadow": 0.9,
+     "slant": 0.0,
+     "color": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   {
+    "type": "tape",
+    "enabled": true,
+    "params": {
+     "format": "VHS EP",
+     "input": "Direct (camcorder)",
+     "saturation": 0.0,
+     "noise": 0.7,
+     "dropouts": 0.15,
+     "tracking": 0.08
+    }
+   }
+  ]
+ },
+ {
+  "name": "Worn Film Print",
+  "audio": "Cassette",
+  "steps": [
+   {
+    "type": "lut",
+    "enabled": true,
+    "params": {
+     "lut": "sepia",
+     "intensity": 0.35
+    }
+   },
+   {
+    "type": "frame_rate",
+    "enabled": true,
+    "params": {
+     "fps": 24.0
+    }
+   },
+   {
+    "type": "grain",
+    "enabled": true,
+    "params": {
+     "texture": "coarse",
+     "amount": 0.25
+    }
+   },
+   {
+    "type": "film_damage",
+    "enabled": true,
+    "params": {
+     "dust": 0.5,
+     "scratches": 0.5
     }
    }
   ]
@@ -1016,7 +1465,9 @@
    {
     "type": "text_stamp",
     "enabled": true,
-    "params": {}
+    "params": {
+     "style": "film_led"
+    }
    },
    {
     "type": "sensor_noise",

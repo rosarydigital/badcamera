@@ -35,7 +35,7 @@ def test_cpu():
     for t, cls in REGISTRY.items():
         for name, st in cls.styles.items():
             assert set(st) <= {q.key for q in cls.params}, (t, name, set(st) - {q.key for q in cls.params})
-    for style in ("digicam", "vcr", "dotmatrix", "clean"):
+    for style in ("digicam", "film_led", "vcr_osd", "camcorder_osd", "cctv_osd", "vcr", "dotmatrix", "clean"):
         img, pad = text.render(720, ["'26 10 28", "PLAY ▶ 12:48 PM"], style, "DejaVu Sans Bold", 1.5, [1, 0.5, 0.1], 0.6, 0.5, 0.8,
                                0.1 if style == "digicam" else 0.0, 0.0, "left")
         assert img.ndim == 3 and img.shape[2] == 4 and img[..., 3].max() == 255 and pad > 0, style

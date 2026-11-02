@@ -10,6 +10,7 @@ from . import text
 from .gpu import ROOT
 
 REGISTRY = {}
+rng = random.Random()  # effect randomness; export reseeds it so renders repeat
 
 
 def assets(sub, ext):
@@ -317,7 +318,7 @@ class Vhs(Effect):
     type = "vhs"
     params = [P("wobble", 1.0, 0, 5), P("chroma_shift", 4.0, -20, 20), P("chroma_blur", 3.0, 0, 10), P("tracking", 0.5),
               P("noise", 0.08, 0, 0.5), P("scanlines", 0.15), P("saturation", 1.1, 0, 2), P("softness", 1.5, 0, 4), P("ringing", 0.6, 0, 2),
-              P("lines", 480, 120, 1080), P("dropouts", 0.4), P("jumps", 0.3), P("black_level", 0.04, 0, 0.2)]
+              P("lines", 480, 120, 1080), P("dropouts", 0.4), P("jumps", 0.3), P("black_level", 0.03, 0, 0.2)]
 
     def apply(self, g, tex):
         v = self.v
@@ -391,7 +392,7 @@ class ChromaticAberration(Effect):
 @effect
 class TextStamp(Effect):
     type = "text_stamp"
-    params = [P("text", "'%y %m %d"), P("style", "digicam", options=["digicam", "vcr", "dotmatrix", "clean"]),
+    params = [P("text", "'%y %m %d"), P("style", "digicam", options=["digicam", "film_led", "vcr_osd", "camcorder_osd", "cctv_osd", "vcr", "dotmatrix", "clean"]),
               P("font", "DejaVu Sans Bold", options=text.font_names), P("align", "right", options=["left", "center", "right"]),
               P("x", 0.93), P("y", 0.9), P("size", 1.5, 0.3, 6), P("tracking", 0.0, -0.3, 1.0),
               P("color", [1.0, 0.45, 0.08], color=True), P("glow", 0.7), P("hot_core", 0.5), P("shadow", 0.0),
@@ -404,7 +405,7 @@ class TextStamp(Effect):
             self.t0 = g.time
         e = max(0.0, g.time - self.t0)
         s = int(e)
-        return (time.strftime(self.v["text"]).replace("{tc}", f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}")
+        return (time.strftime(self.v["text"], time.localtime(g.wall)).replace("{tc}", f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}")
                 .replace("{tcf}", f"{s // 3600:02d}:{s // 60 % 60:02d}:{s % 60:02d}:{int(e * 30) % 30:02d}"))
 
     def apply(self, g, tex):
@@ -447,7 +448,7 @@ class Flash(Effect):
 
     def apply(self, g, tex):
         v = self.v
-        s = v["strength"] * (1 + v["flicker"] * (random.random() - 0.5) * 0.4)  # cheap flash/video light never fires the same twice
+        s = v["strength"] * (1 + v["flicker"] * (rng.random() - 0.5) * 0.4)  # cheap flash/video light never fires the same twice
         return g.run("flash", size=tex.size, tex=tex, uStrength=s, uFalloff=v["falloff"], uCenter=(v["x"], 1 - v["y"]), uCool=v["cool"])
 
 
@@ -555,8 +556,167 @@ class FrameRate(Temporal):
         reset = self.textures(g, tex, 1)
         if reset or g.time >= self.next_t or g.time < self.next_t - 2:
             g.run("copy", out=self.hist[0], tex=tex)
-            self.next_t = g.time + (1 + v["jitter"] * (random.random() * 1.5 - 0.5)) / v["fps"]
+            self.next_t = g.time + (1 + v["jitter"] * (rng.random() * 1.5 - 0.5)) / v["fps"]
         return self.hist[0]
+
+
+# ---- hardware-signal effects: everything below works at the format's own resolution, not the output's ----
+
+NTSC, PAL = dict(size=(760, 480), line_us=52.6, head=8), dict(size=(936, 576), line_us=52.0, head=9)
+# Format: luma and chroma bandwidth (MHz), noise and timing relative to VHS SP. Starting points from the format specs;
+# the shape of the response is calibrated in tools/compare_reference.py against real captures of colour bars.
+TAPE_FORMATS = {
+    "VHS SP": dict(luma=2.5, chroma=0.34, noise=1.0, timing=1.0, ring=1.0),
+    "VHS LP": dict(luma=2.1, chroma=0.31, noise=1.35, timing=1.3, ring=1.15),
+    "VHS EP": dict(luma=1.7, chroma=0.27, noise=1.8, timing=1.7, ring=1.3),
+    "S-VHS": dict(luma=4.2, chroma=0.34, noise=0.7, timing=1.0, ring=0.7),
+    "Betamax": dict(luma=2.8, chroma=0.42, noise=0.85, timing=0.9, ring=0.8),
+    "Video8": dict(luma=2.4, chroma=0.34, noise=0.9, timing=0.8, ring=1.2),
+    "Hi8": dict(luma=4.2, chroma=0.34, noise=0.65, timing=0.8, ring=0.8),
+}
+
+
+def mhz_sigma(mhz, width, line_us):
+    """Gaussian sigma in samples for a lowpass with this -3 dB bandwidth."""
+    cycles_per_line = mhz * line_us
+    return 0.1325 / cycles_per_line * width
+
+
+@effect
+class Tape(Temporal):
+    """A tape signal chain: encode, comb, record, replay, decode. Each dub repeats record and replay."""
+    type = "tape"
+    params = [P("format", "VHS SP", options=list(TAPE_FORMATS)), P("standard", "NTSC", options=["NTSC", "PAL"]),
+              P("input", "Composite", options=["Composite", "Direct (camcorder)"]), P("generation", 1, 1, 6), P("noise", 1.0, 0, 4), P("tracking", 0.0),
+              P("dropouts", 0.25), P("jitter", 1.0, 0, 4), P("ringing", 1.0, 0, 3), P("head_switch", 1.0), P("saturation", 0.76, 0, 1.6),
+              P("black_level", 0.03, 0, 0.2), P("interlace", 1.0), P("overscan", False)]
+
+    def apply(self, g, tex):
+        v, f = self.v, TAPE_FORMATS[self.v["format"]]
+        std = PAL if v["standard"] == "PAL" else NTSC
+        size, width = std["size"], std["size"][0]
+        pal, composite = int(v["standard"] == "PAL"), int(v["input"] == "Composite")
+        small = g.run("copy", size=size, tex=shrink(g, tex, size))
+        self.textures(g, small, 1)
+        field = g.frame & 1
+        x = g.run("tape_encode", size=size, tex=small, uPrev=self.hist[0], uInterlace=v["interlace"], uPal=pal, uComposite=composite, uField=field)
+        x = g.run("tape_sep", size=size, tex=x, uPal=pal, uComposite=composite, uField=field)
+        for gen in range(v["generation"]):
+            loss = 1 + 0.18 * gen  # each dub loses a little more bandwidth and adds its own noise
+            x = g.run("tape_record", size=size, tex=x, uLumaSigma=mhz_sigma(f["luma"], width, std["line_us"]) * loss,
+                      uChromaSigma=mhz_sigma(f["chroma"], width, std["line_us"]) * loss, uChromaDelay=width * 0.0035 * loss,
+                      uRing=0.75 * f["ring"] * v["ringing"], uRingWidth=width * 0.0032, uSmear=0.3, uChromaBlend=0.5, uSat=v["saturation"] ** (1 / v["generation"]))
+            x = g.run("tape_play", size=size, tex=x, uSeed=(g.frame * 0.618034 + gen * 0.31) % 1 * 97.0, uNoise=0.056 * f["noise"] * v["noise"],
+                      uChromaNoise=0.05 * f["noise"] * v["noise"], uStreak=2.0, uJitter=0.55 * f["timing"] * v["jitter"], uWave=1.1 * f["timing"] * v["jitter"],
+                      uFlag=2.4 * v["jitter"], uDropouts=v["dropouts"] * f["noise"], uTracking=v["tracking"], uHeadSwitch=v["head_switch"] if gen == 0 else 0.0,
+                      uHeadGain=0.012, uHeadLines=std["head"], uChromaLoss=0.0006 * f["noise"])
+        g.run("copy", out=self.hist[0], tex=small)
+        return g.run("tape_out", size=tex.size, tex=x, uBlack=v["black_level"], uWhite=0.9, uKnee=0.8, uOverscan=0.07 if v["overscan"] else 0.0, uBlank=0.012)
+
+
+def seed(g):
+    """Noise seed for a frame: repeatable, because the frame number drives it."""
+    return (g.frame * 0.618034) % 1
+
+
+@effect
+class CamcorderSensor(Temporal):
+    """The camera end of a camcorder: one small CCD, slow AGC, autofocus and a hand holding it."""
+    type = "camcorder_sensor"
+    params = [P("sensor_noise", 1.0, 0, 4), P("agc", 1.0, 0, 2), P("highlight_knee", 0.68, 0.4, 0.95), P("false_color", 1.0, 0, 3), P("softness", 1.5, 0, 8),
+              P("autofocus_hunt", 0.25), P("white_balance_drift", 0.4), P("handheld", 0.6, 0, 3), P("low_light_color_loss", 0.7), P("dark_hunting", 0.5, 0, 2)]
+    focus = 0.0
+
+    def apply(self, g, tex):
+        v = self.v
+        small = shrink(g, tex, (16, 9))
+        if self.textures(g, small, 1):
+            g.run("copy", out=self.hist[0], tex=small)
+        avg = g.run("temporal_mix", size=small.size, tex=small, uPrev=self.hist[0], uAmount=0.93)  # AGC reacts over about a second
+        g.run("copy", out=self.hist[0], tex=avg)
+        t = g.time
+        h = v["handheld"]
+        # Layered sines stand in for a hand: slow drift, a small tremor, and breathing.
+        offset = (h * 0.0035 * (math.sin(t * 0.9) + 0.6 * math.sin(t * 2.3 + 1.1) + 0.2 * math.sin(t * 7.1)),
+                  h * 0.0040 * (math.sin(t * 0.7 + 2.0) + 0.5 * math.sin(t * 2.9) + 0.2 * math.sin(t * 8.3 + 0.5)))
+        roll = h * 0.0022 * (math.sin(t * 0.53) + 0.5 * math.sin(t * 1.7 + 1.0))
+        # Contrast autofocus: every few seconds it wanders off and back.
+        phase = (t * 0.17) % 1
+        hunt = v["autofocus_hunt"] * 7 * math.sin(min(phase / 0.09, 1) * math.pi) ** 2 if phase < 0.09 else 0.0
+        drift = v["white_balance_drift"] * 0.05
+        wb = (1 + drift * math.sin(t * 0.21), 1.0, 1 - drift * math.sin(t * 0.21 + 0.4))
+        return g.run("camcorder_sensor", size=tex.size, tex=tex, uAvg=avg, uOffset=offset, uRoll=roll, uZoom=1 + 0.02 * min(h, 1.5), uFocus=v["softness"] + hunt,
+                     uKnee=v["highlight_knee"], uGain=v["agc"], uNoise=0.012 * v["sensor_noise"], uMoire=0.35 * v["false_color"],
+                     uShadowChroma=v["low_light_color_loss"], uSeed=seed(g), uWB=wb, uHunt=v["dark_hunting"] * (0.6 * math.sin(t * 2.7) + 0.4 * math.sin(t * 6.1)))
+
+
+NIGHT_TINTS = {"Green (NightShot)": [0.42, 1.0, 0.5], "Green phosphor": [0.2, 1.0, 0.25], "Mono": [1.0, 1.0, 1.0], "Cool mono": [0.82, 0.92, 1.0]}
+
+
+@effect
+class NightVision(Temporal):
+    """Old infrared video: no colour, a pool of LED light, slow exposure and a lot of gain."""
+    type = "night_vision"
+    params = [P("tint", "Green (NightShot)", options=list(NIGHT_TINTS)), P("gain", 1.0, 0.2, 3), P("ir_spot_size", 0.42, 0.1, 2), P("ambient", 0.05),
+              P("spot_x", 0.5), P("spot_y", 0.5), P("reflectance", 0.5, 0, 2), P("noise", 0.1, 0, 0.5), P("ghosting", 0.55, 0, 0.95), P("bloom", 0.45, 0, 2),
+              P("hum_bars", 0.0), P("hot_pixels", 0.3), P("resolution", 420, 120, 1080), P("phosphor_white", 0.2), P("target_exposure", 0.2, 0.05, 0.6)]
+    state = None
+
+    def apply(self, g, tex):
+        v = self.v
+        raw = g.run("ir_response", size=tex.size, tex=tex, uCenterX=v["spot_x"], uCenterY=v["spot_y"], uSpot=v["ir_spot_size"], uRange=v["ambient"], uReflect=v["reflectance"])
+        avg = g.run("average", size=(1, 1), tex=shrink(g, raw, (64, 36)))
+        if self.state is None:
+            self.state, self.n = [g.texture(1, 1) for _ in range(2)], 0
+            g.run("copy", out=self.state[1], tex=avg)
+        self.n += 1
+        level = g.run("temporal_mix", out=self.state[self.n % 2], tex=avg, uPrev=self.state[(self.n + 1) % 2], uAmount=0.9)
+        ir = g.run("ir_gain", size=tex.size, tex=raw, uAvg=level, uTarget=v["target_exposure"])
+        h = min(v["resolution"], tex.height)
+        size = (max(2, tex.width * h // tex.height), h)
+        lowres = g.run("copy", size=size, tex=shrink(g, ir, size))
+        reset = self.textures(g, lowres, 1)
+        if reset:
+            g.run("copy", out=self.hist[0], tex=lowres)
+        glow = blur(g, shrink(g, g.run("bright", size=lowres.size, tex=lowres, uThreshold=0.55), down(lowres, 4)), 4.0)
+        out = g.run("night_vision", size=tex.size, tex=lowres, uTrail=self.hist[0], uGlow=glow, uGhost=v["ghosting"], uBloom=v["bloom"], uNoise=v["noise"], uGain=v["gain"],
+                    uHum=v["hum_bars"], uHumSpeed=0.11, uHot=v["hot_pixels"], uSeed=seed(g), uPhosphor=v["phosphor_white"], uTint=NIGHT_TINTS[v["tint"]])
+        trail = g.run("temporal_mix", size=lowres.size, tex=lowres, uPrev=self.hist[0], uAmount=v["ghosting"] * 0.8)
+        g.run("copy", out=self.hist[0], tex=trail)
+        return out
+
+
+@effect
+class Crt(Temporal):
+    """Point a camera at an old TV: mask, scanlines, glow and curved glass. Use after tape, as the last step."""
+    type = "crt"
+    params = [P("curvature", 0.7, 0, 2), P("mask", 0.3), P("scanlines", 0.55), P("glow", 0.25, 0, 1), P("lines", 480, 240, 1080), P("flicker", 0.6), P("persistence", 0.25),
+              P("corner", 0.1, 0, 0.5)]
+
+    def apply(self, g, tex):
+        v = self.v
+        if self.textures(g, tex, 1):
+            g.run("copy", out=self.hist[0], tex=tex)
+        glow = blur(g, shrink(g, tex, down(tex, 4)), 5.0)
+        out = g.run("crt", size=tex.size, tex=tex, uGlow=glow, uPersist=self.hist[0], uCurve=v["curvature"], uMask=v["mask"], uScan=v["scanlines"], uBloom=v["glow"],
+                    uLines=float(v["lines"]), uFlicker=v["flicker"], uPersistence=v["persistence"], uCorner=v["corner"])
+        g.run("copy", out=self.hist[0], tex=out)
+        return out
+
+
+@effect
+class FilmDamage(Effect):
+    """A worn print running through a projector: gate weave, flicker, dust and scratches. Pairs with grain."""
+    type = "film_damage"
+    params = [P("weave", 0.5, 0, 3), P("flicker", 0.4), P("dust", 0.35), P("scratches", 0.3)]
+
+    def apply(self, g, tex):
+        v = self.v
+        t = g.frame * 0.618034
+        wx = (math.sin(t * 23.1) + 0.5 * math.sin(t * 7.7)) * 0.0009 * v["weave"]
+        wy = (math.sin(t * 19.3 + 1.2) + 0.5 * math.sin(t * 5.1)) * 0.0014 * v["weave"]
+        return g.run("film_damage", size=tex.size, tex=tex, uWeaveX=wx, uWeaveY=wy, uFlicker=v["flicker"] * 0.05 * math.sin(t * 37.7), uDust=v["dust"], uScratches=v["scratches"],
+                     uSeed=seed(g) * 50)
 
 
 # Built-in styles: named parameter sets per effect (applied on top of the defaults). Users add more from the UI.
@@ -595,6 +755,15 @@ STYLES = {
             "Worn tape": dict(), "Destroyed tape": dict(wobble=3.0, tracking=1.0, noise=0.2, chroma_shift=10.0, chroma_blur=6.0, softness=3.0,
                                                         dropouts=1.0, jumps=1.0, lines=240),
             "Camcorder 8mm": dict(wobble=0.6, tracking=0.1, noise=0.05, chroma_shift=3.0, lines=400, dropouts=0.2, jumps=0.1)},
+    "tape": {"Clean SP": dict(), "Worn LP": dict(format="VHS LP", noise=1.3, dropouts=0.5, tracking=0.15), "Bad EP": dict(format="VHS EP", noise=1.5, dropouts=0.8, tracking=0.5),
+             "3rd generation": dict(generation=3), "Camcorder Video8": dict(format="Video8", input="Direct (camcorder)"),
+             "Camcorder Hi8": dict(format="Hi8", input="Direct (camcorder)"), "S-VHS": dict(format="S-VHS"), "Betamax": dict(format="Betamax"),
+             "PAL SP": dict(standard="PAL")},
+    "camcorder_sensor": {"Bright day": dict(sensor_noise=0.6, agc=0.3), "Indoors": dict(), "Dark room": dict(agc=1.6, sensor_noise=2.0), "On a tripod": dict(handheld=0.0)},
+    "night_vision": {"NightShot": dict(), "Green tube": dict(tint="Green phosphor", ghosting=0.7, noise=0.16, phosphor_white=0.5), "Mono CCTV": dict(tint="Mono", ghosting=0.3, hum_bars=0.5),
+                     "Bright IR": dict(ambient=0.6, gain=1.6, noise=0.05)},
+    "crt": {"Living room TV": dict(), "Security monitor": dict(curvature=0.4, mask=0.2, scanlines=0.8), "Big curve": dict(curvature=1.6, corner=0.25)},
+    "film_damage": {"Clean print": dict(weave=0.3, dust=0.1, scratches=0.0), "Used print": dict(), "Beat up": dict(weave=1.5, flicker=0.9, dust=0.9, scratches=0.9)},
     "lcd": {"Phone screen": dict(cell=4.0, gap=0.1, subpixel=0.5, smear=0.2, scan_bar=0.2, moire=0.15), "Old monitor": dict(),
             "Stadium screen": dict(cell=14.0, gap=0.35, subpixel=1.0, brightness=2.0, smear=0.1, scan_bar=0.6, moire=0.0)},
     "datamosh": {"Light smear": dict(residual=0.4, iframe_every=90), "Heavy smear": dict(residual=0.05), "Melt": dict(residual=0.0, block=32, search=16)},
@@ -603,14 +772,16 @@ STYLES = {
     "chromatic_aberration": {"Subtle": dict(amount=1.5), "Cheap lens": dict(amount=4.0), "Broken": dict(amount=12.0, radial=False)},
     "text_stamp": {
         "Digicam date": dict(),
-        "Film date back": dict(text="'%y %m %d", color=[1.0, 0.3, 0.05], glow=0.9, hot_core=0.8, slant=0.08, size=1.3),
-        "VCR play": dict(text="PLAY ▶", style="vcr", align="left", x=0.07, y=0.1, size=1.6, color=WHITE, glow=0.0, hot_core=0.0,
+        "Film date back": dict(text="'%y %m %d", style="film_led", color=[1.0, 0.3, 0.05], glow=0.9, hot_core=0.8, slant=0.08, size=1.3),
+        "VCR play": dict(text="PLAY ▶", style="vcr_osd", align="left", x=0.07, y=0.1, size=1.6, color=WHITE, glow=0.0, hot_core=0.0,
                          shadow=0.9, slant=0.0),
-        "Camcorder REC": dict(text="● REC", style="vcr", align="left", x=0.07, y=0.1, size=1.6, color=RED, glow=0.0, hot_core=0.0,
+        "Camcorder REC": dict(text="● REC", style="camcorder_osd", align="left", x=0.07, y=0.1, size=1.6, color=RED, glow=0.0, hot_core=0.0,
                               shadow=0.9, slant=0.0, blink=1.0),
-        "Camcorder date": dict(text="%b %d %Y|%I:%M:%S %p", style="vcr", align="right", x=0.93, y=0.86, size=1.3, color=WHITE, glow=0.0,
+        "Camcorder date": dict(text="%b %d %Y|%I:%M:%S %p", style="camcorder_osd", align="right", x=0.93, y=0.86, size=1.3, color=WHITE, glow=0.0,
                                hot_core=0.0, shadow=0.9, slant=0.0),
-        "Viewfinder timecode": dict(text="{tcf}", style="dotmatrix", align="right", x=0.93, y=0.1, size=1.4, color=WHITE, glow=0.15,
+        "CCTV title": dict(text="CAM 03  %m-%d-%Y  %H:%M:%S", style="cctv_osd", align="left", x=0.05, y=0.92, size=1.15, color=WHITE, glow=0.0, hot_core=0.0,
+                           shadow=0.9, slant=0.0),
+        "Viewfinder timecode": dict(text="{tcf}", style="camcorder_osd", align="right", x=0.93, y=0.1, size=1.4, color=WHITE, glow=0.15,
                                     hot_core=0.0, shadow=0.6, slant=0.0),
         "Clean caption": dict(text="%B %d, %Y", style="clean", align="center", x=0.5, y=0.9, size=1.4, color=WHITE, glow=0.0,
                               hot_core=0.0, shadow=0.8, slant=0.0)},
