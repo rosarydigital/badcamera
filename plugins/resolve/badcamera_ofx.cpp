@@ -15,6 +15,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#define NOMINMAX  // windows.h's min and max macros break std::max
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define CLOSE closesocket
